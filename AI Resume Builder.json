@@ -1,0 +1,651 @@
+{
+  "name": "AI Resume Builder",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Here is the job posting information:\nCompany Name: {{ $json.companyName }}\nJob Posting Description: {{ $json.descriptionText }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are an expert LinkedIn job posting filtering agent. Your only task is to determine whether or not the job posting provided to you is suitable for the specific candidate with the provided original resume. The original resume may include various skills or qualifications, you will have to think deeply and determine if any of the candidate's skillsets or knowledge is suitable to the job posting.\n\nHere is the information from the job posting and company:\nCompany Name: {{ $json.companyName }}\nJob Posting Description: {{ $json.descriptionText }}\n\nHere is the candidate's original resume: {{ $('Get Original Resume').item.json.content }}\n\nIf the job posting is suitable to the candidate according to their skills, experience and knowledge. You must rate whether or not the candidate's resume is suitable to the job posting out of 100. If the rating is 0, then the output will be 0 meaning that the job posting in NOT suitable to the candidate at all. If the rating is 100, then the output will be 100 meaning that the job posting is extremely suitable to the candidate.\n\nOutput in JSON format as indicated in the output parser."
+        }
+      },
+      "id": "867ddbac-9a5e-4002-aeae-f0f7fcf64a84",
+      "name": "Job Matching Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        80,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "",
+      "name": "8AM Daily",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        96,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": ""
+      },
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        288,
+        80
+      ],
+      "id": "",
+      "name": "Get Original Resume",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "",
+          "name": "Google Docs account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url" : "",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n    \"count\": 100,\n    \"scrapeCompany\": true,\n    \"urls\": [\n        \"https://www.linkedin.com/jobs/search-results/?f_TPR=r86400&keywords=web%20development%20and%20ai%20automation\"\n    ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        624,
+        80
+      ],
+      "id": "",
+      "name": "LinkedIn Jobs Scraper",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        544,
+        272
+      ],
+      "id": "",
+      "name": "Think"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"company_name\": \"string\",\n  \"job_description\": \"string\", \n  \"rating\": \"number\",\n  \"justification\": \"string\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        384,
+        272
+      ],
+      "id": "39d13101-325e-4380-ac99-7b4d1b2036c9",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "match-score-condition",
+              "leftValue": "={{ Number($json.output.rating) }}",
+              "rightValue": 65,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "",
+      "name": "65% or Higher Qualification",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        400,
+        384
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        608,
+        368
+      ],
+      "id": "",
+      "name": "Limit 1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Job Posting Description: {{ $json.output.job_description }}\nCandidate's Original Resume: {{ $('Get Original Resume').item.json.content }}",
+        "options": {
+          "systemMessage": "=You are an expert resume building specialist. Your task is to THINK DEEPLY to build AND enhance the originally provided resume based on the job requirements from the LinkedIn job postings.\n\nNOTE: \nThe original resume may be unstructured but contains all of the candidate's relevant skills, experience and education.\n\nINSTRUCTIONS:\n1. Take the original resume content and the job posting details\n2. Recreate and enhance the resume to tailor and match the job requirements of the posting\n3. Keep all original sections: Summary, Experience, Education, Skills, Projects, Awards & Certifications\n4. Improve the content to highlight relevant skills and experiences\n5. Maintain the professional structure and formatting\n6. Output the COMPLETE enhanced resume with ALL sections\n7. DO NOT include the Complementary Skillsets portion of the resume. That is only there as add ons to assist with tailoring the resume. \n\nIMPORTANT FORMATTING RULES:\n- Output ONLY clean HTML content, no markdown formatting\n- Do NOT include ```html or ``` or backticks in your response\n- Do NOT include the word \"html\" at the beginning\n\nEXAMPLE STRUCTURE:\n\n<h1>Jimmy Jim Jim</h1>\n<div class=\"job-title\"><strong>Software Developer</strong></div>\n\n<div class=\"contact-section\">\n<strong>Contact:</strong>\n<ul>\n<li>Phone: (555) 123-4567</li>\n<li>Email: jimmy.jim.jim@email.com</li>\n<li>LinkedIn: linkedin.com/in/jimmyjimjimdev</li>\n<li>GitHub: github.com/jimmyjimjim-dev</li>\n</ul>\n</div>\n\n<h2><strong>Summary</strong></h2>\n<p class=\"summary\">[Enhanced summary here]</p>\n\n<h2><strong>Experience</strong></h2>\n[Job entries with proper HTML structure]\n\nStart your response directly with <h1> and end with the last job entry. No extra text or formatting markers."
+        }
+      },
+      "id": "fab3b7ee-0f67-4695-86c2-e1848327d91f",
+      "name": "Resume Building Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        784,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/upload/drive/v3/files/{{ $json.id }}?uploadType=media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"content-type\":\"text/html\"\n}",
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{ $('HTML Formatter').item.json.formattedResume }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        640
+      ],
+      "id": "1c22aebf-53a7-4f98-bf95-c4c32aee2f90",
+      "name": "Upload Updated Resume",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "whEUvAqMzuHSouVX",
+          "name": "Google Docs account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the HTML content from the AI agent\nconst htmlContent = $input.all()[0].json.output;\n\n// Create CSS styles that match the original resume format exactly\nconst cssStyles = 'body { font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; line-height: 1.4; color: #333; max-width: 8.5in; margin: 0 auto; padding: 1in; background: white; font-size: 11pt; } ' +\n'h1 { font-size: 24pt; font-weight: bold; margin: 0 0 4pt 0; color: #000; } ' +\n'h2 { font-size: 14pt; font-weight: bold; margin: 20pt 0 8pt 0; color: #000; } ' +\n'h3 { font-size: 11pt; font-weight: bold; margin: 12pt 0 4pt 0; color: #000; } ' +\n'p { margin: 0 0 6pt 0; line-height: 1.3; } ' +\n'ul { margin: 4pt 0 8pt 0; padding-left: 16pt; list-style-type: disc; } ' +\n'li { margin: 2pt 0; line-height: 1.3; } ' +\n'.contact-info { margin-bottom: 16pt; font-size: 10pt; line-height: 1.2; } ' +\n'.contact-info p { margin: 1pt 0; } ' +\n'.job-title { font-size: 12pt; font-weight: normal; margin: 2pt 0 12pt 0; color: #666; } ' +\n'.job-header { font-weight: bold; margin: 8pt 0 2pt 0; } ' +\n'.job-company { font-style: italic; margin: 0 0 4pt 0; font-size: 10pt; } ' +\n'.section { margin-bottom: 16pt; } ' +\n'.skills-section ul { list-style-type: none; padding-left: 0; } ' +\n'.skills-section li { margin: 1pt 0; } ' +\n'strong { font-weight: bold; } ' +\n'a { color: #0066cc; text-decoration: none; } ' +\n'a:hover { text-decoration: underline; } ' +\n'@media print { body { padding: 0.5in; font-size: 10pt; } h1 { font-size: 22pt; } h2 { font-size: 13pt; } }';\n\n// Build the complete HTML\nconst styledHtml = '<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><style>' + cssStyles + '</style></head><body>' + htmlContent + '</body></html>';\n\nreturn {\n  json: {\n    formattedResume: styledHtml,\n    status: \"success\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        640
+      ],
+      "id": "bc8f0eb6-a36a-4529-9dca-9839d27c851e",
+      "name": "HTML Formatter"
+    },
+    {
+      "parameters": {
+        "chatId": "",
+        "text": "={{ $json.name }} Completed\n\nHere it is : https://docs.google.com/document/d/1TAuMMna7_iJ3CHEHWtuCMSTfIpC-TOpFx2RHvqEYsHM/edit?usp=drive_link",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        752,
+        736
+      ],
+      "id": "",
+      "name": "Telegram Response",
+      "webhookId": "",
+      "credentials": {
+        "telegramApi": {
+          "id": "Kne3gtwBQ6enmRxv",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "sanjoleestj17@gmail.com",
+        "subject": "={{ $json.name }} Completed",
+        "emailType": "text",
+        "message": "={{ $json.name }} Completed\n\nHere it is : https://docs.google.com/document/d/1TAuMMna7_iJ3CHEHWtuCMSTfIpC-TOpFx2RHvqEYsHM/edit?usp=drive_link",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        752,
+        592
+      ],
+      "id": "",
+      "name": "Email Response",
+      "webhookId": "10cce0ab-32dd-4f1b-b947-4b7c332fa06c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "AfkGvoSAPKg9VRzP",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Input Original Resume",
+        "height": 240,
+        "width": 512,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "db06d9a5-9b3d-45f3-a747-5904149b3697",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Find Daily Job Postings",
+        "height": 240,
+        "width": 576,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        512,
+        0
+      ],
+      "id": "493a265c-8c18-4c22-a9e6-19fb5018438c",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Filter & Build/Enhance",
+        "height": 336,
+        "width": 1088
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        256
+      ],
+      "id": "04b9dea2-5529-42ed-ae6d-0122233768b5",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Tailored Resume",
+        "height": 320,
+        "width": 1088,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        576
+      ],
+      "id": "d27ee939-13a0-4ad5-a431-f43f631af937",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "maxItems": 7
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        848,
+        80
+      ],
+      "id": "0b431ecf-3219-4758-95dd-1ae4a36b4c7f",
+      "name": "Limit 4"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        816,
+        272
+      ],
+      "id": "",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "qUR767qjfYRByLRg",
+          "name": "Google Gemini(PaLM) Api account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "folderId": "16JeIo6z5De5mBONFvPajA6-lgqZkfhJr",
+        "title": "=Resume : {{ $('Limit 1').item.json.output.company_name }}"
+      },
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        384,
+        640
+      ],
+      "id": "e27a2efe-faa7-404f-a19e-d00f1bf157cd",
+      "name": "Create a document",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "whEUvAqMzuHSouVX",
+          "name": "Google Docs account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Get Original Resume": [
+      {
+        "json": {
+          "documentId": "1IdowyEQHY4ZuC84Ve2ZK_Iwmt4x5qjEemYATighXe_U",
+          "content": "Sanjolee Singh \nï sanjolee-singh-30139a300 |  mysite.com | # sanjoleestj17@gmail.com | H +91-9777641432 CERTIFICATIONS \n• Certificate of Completion “Java 17 Masterclass: Start Coding in 2024 Udemy” \u000b• Certificate of Completion “Google Advanced Data Analytics Capstone, Coursera”\u000b• Certificate of Completion ”Oracle Cloud Infrastructure AI Foundations,Oracle Mylearn Oracle” • Certificate of Completion of ”Apna College Web Development Course , ApnaCollege” \nWork Experience \n• Working as a Google Student Ambassador in college(2025) \n• Working as a GirlScript Summer of Code (GSSoC) Contributor(2025) \n• Completed AICTE IBM SkillsBuild Internship on Cloud and AI Applications(2025) AICTE Projects \nAI Fitness Trainer with Personalized Diet and Workout Plans § GitHub Built and deployed an AI Fitness Trainer focusing on personalized diet and workout plans. Features include a voice AI assistant (Vapi), LLM integration (Gemini AI), real-time program generation, and user authentication. Tech Stack: Next.js, React, Tailwind CSS, Shadcn UI, Clerk (Auth), Convex (Database). \nEducation \n2027 - present Computer Science Kalinga Institute of Industrial Technology, Bhubaneswar  \n2022 - KiiT International School, Bhubaneswar(CBSE) \nPublications \n• Sansanwal, Gargi and Singh, Sanjolee (2025). Critical Representation of Smart and Distributed Modeling for Disease Risk Analysis. In: Wearable Technologies for Digital Medicine: Advancement, Models, and Applications. Eds. Sushruta Mishra, Subhashish Das, and S. Balamurugan. Scrivener Publishing LLC, pp. 319–340. ICCCN \nSkills \n-Fullstack HTML5, CSS, Bootstrap, JavaScript, Terminal, Git & GitHub, Node.js, Node Express, Node EJS, REST APIs, SQL, MongoDB, MongoDB with Express, React, Tailwind, Redux, Redux Toolkit \u000b-Data-Analytics Spreadsheets in Excel, NoSQL, R Programming, Data Cleaning, Data Visualization, Statistics, Machine Learning Basics,Data Mining, Tableau, Google Analytics, Google Cloud,Communication Skills, Data Storytelling, Predictive Analytics \n -Programming Languages C, Java, R , OOPS , DSA\n"
+        }
+      }
+    ],
+    "Job Matching Agent": [
+      {
+        "json": {
+          "output": {
+            "company_name": "Capgemini",
+            "job_description": "We are seeking skilled LLAMA Software Engineers to join a high-impact team working on cutting-edge Large Language Model (LLM) solutions for our strategic client. You will work on the implementation, fine-tuning, deployment, and integration of client’s open-source LLaMA (Large Language Model AI) models in real-world production environments.As part of this role, you will collaborate closely with client’s AI/ML researchers, product teams, and infrastructure engineers to develop scalable, safe, and responsible generative AI applications.⸻Key Responsibilities• Design, develop, and deploy applications using LLaMA and other open-source LLM architectures.• Fine-tune and optimize large models for specific tasks using reinforcement learning, prompt engineering, LoRA, or QLoRA.• Collaborate with client stakeholders to integrate LLMs into products like search, recommendation, support automation, and content generation.• Build robust APIs, pipelines, and tools to support LLM inference, performance monitoring, and scalability.• Address bias, toxicity, latency, and cost-efficiency in LLM outputs in compliance with client’s responsible AI guidelines.• Contribute to open-source efforts or internal model innovation, benchmarking, and performance improvements.⸻ Required Qualifications• Bachelor’s or Master’s degree in Computer Science, Machine Learning, Artificial Intelligence, or related field.• 3–7 years of experience in software engineering with at least 1–2 years working on LLMs, transformers, or generative AI.• Hands-on experience with LLaMA, GPT, PaLM, Mistral, or similar models using libraries like Hugging Face Transformers, PyTorch, DeepSpeed, Ray, or Accelerate.• Solid knowledge of fine-tuning techniques, distributed training, and inference optimization (e.g., quantization, model pruning).• Proficiency in Python and strong engineering practices (version control, CI/CD, unit testing).• Familiarity with client’s ecosystem or equivalent (FAIR, PyTorch/Xformers, FBGEMM, etc.) is a plus.⸻ Preferred Skills• Experience deploying LLMs in production environments at scale.• Familiarity with MLOps platforms (e.g., MLFlow, SageMaker, Weights &amp; Biases).• Experience with multimodal models, agent frameworks (AutoGPT, LangChain, Open Agents), or retrieval-augmented generation (RAG) pipelines.• Background in privacy-preserving ML, RLHF, or embedding-based search.",
+            "rating": "10",
+            "justification": "The candidate, Sanjolee Singh, is an undergraduate student expected to graduate in 2027, which is a significant mismatch for the job's requirement of 3-7 years of software engineering experience with 1-2 years specifically in LLMs. While the candidate has a relevant project (\"AI Fitness Trainer\") demonstrating \"LLM integration (Gemini AI)\", this is a personal project and does not equate to the professional experience required for this role. The job description emphasizes hands-on experience with specific open-source LLaMA models, advanced fine-tuning techniques (LoRA, QLoRA, reinforcement learning), and libraries like Hugging Face Transformers, PyTorch, DeepSpeed, Ray, or Accelerate, which are not explicitly demonstrated in the candidate's resume. Additionally, proficiency in Python is a required qualification, but Python is not explicitly listed among the candidate's programming languages. The candidate shows initiative with general AI and data analytics certifications and basic machine learning knowledge, but lacks the specialized, in-depth professional experience and specific technical skills required for a skilled LLAMA Software Engineer role at this level. The rating of 10 reflects that while there is a very minimal connection through a personal project involving LLM integration, the candidate is substantially underqualified based on the core requirements."
+          }
+        }
+      },
+      {
+        "json": {
+          "output": {
+            "company_name": "Retell AI",
+            "job_description": "Founding Senior Machine Learning Engineer",
+            "rating": "25",
+            "justification": "The candidate, Sanjolee Singh, presents a highly relevant project titled 'AI Fitness Trainer with Personalized Diet and Workout Plans' which includes a voice AI assistant and LLM integration (Gemini AI). This directly aligns with Retell AI's focus on cutting-edge voice AI and fine-tuning large language models and audio models. The project also implies experience with deployment. Additionally, certifications in Google Advanced Data Analytics and Oracle Cloud Infrastructure AI Foundations indicate a foundational understanding of AI/ML concepts and cloud platforms.\n\nHowever, the job posting is for a 'Founding Senior Machine Learning Engineer,' which explicitly requires extensive real-world experience shipping models in production, deep fluency in a modern ML stack (Python, PyTorch), and the ability to own model performance end-to-end and shape ML strategy. Sanjolee's resume indicates an undergraduate student status (2027 - present) with work experience limited to recent internships and contributor roles in 2025. This career stage does not align with the senior-level experience and responsibilities outlined in the job description. While the project is a strong indicator of potential and interest, it does not demonstrate the years of professional experience required for a senior role, nor does the resume explicitly list proficiency in specific frameworks like PyTorch for advanced model fine-tuning at scale. The candidate's overall profile is more suited for an entry-level or junior ML role, rather than a senior, founding position."
+          }
+        }
+      },
+      {
+        "json": {
+          "output": {
+            "company_name": "RLink Solutions",
+            "job_description": "FRM Fullstack Developer (AI)",
+            "rating": "35/100",
+            "justification": "The candidate, Sanjolee Singh, presents a strong foundational skillset and impressive project experience in AI/ML, making them a promising candidate for an AI-focused role. Their resume highlights proficiency in key full-stack technologies such as React, Node.js, HTML5, CSS, JavaScript, Git & GitHub, REST APIs, Tailwind, and Redux, which align well with the job's technical requirements. The \"AI Fitness Trainer\" project demonstrates practical experience with LLM integration (Gemini AI) and relevant tools like Next.js and React, directly addressing the generative AI aspects of the role. Furthermore, their certifications in \"Oracle Cloud Infrastructure AI Foundations\" and \"Google Advanced Data Analytics Capstone\" along with \"Google Cloud\" skills show a foundational understanding of cloud environments and AI/ML concepts.\n\nHowever, a significant mismatch exists in the \"Required Skills\" section, which explicitly asks for \"5+ years of full-stack development experience.\" The candidate's work experience (2025) and education start date (2027) indicate that they are currently a student or very early in their career, not meeting the required professional experience level for this role. Additionally, while they have LLM integration experience, the job posting specifies advanced requirements such as experience with LLM orchestration frameworks (LangChain/LlamaIndex), specific AI Observability tools (LangSmith, Opik), sophisticated prompt engineering strategies, and robust AI error handling techniques, which are not explicitly detailed in the candidate's resume or project description. Specific experience with Flask for modernizing existing platforms and microservices architecture is also not explicitly stated.\n\nTherefore, despite a strong technical foundation and highly relevant AI project for a junior role, the substantial gap in professional experience and some specific advanced AI tool requirements make this job posting less suitable for the candidate at this stage of their career."
+          }
+        }
+      },
+      {
+        "json": {
+          "output": {
+            "company_name": "Systems Technology Group, Inc. (STG)",
+            "job_description": "AI (Artificial Intelligence) Engineer",
+            "rating": "30/100",
+            "justification": "The candidate demonstrates a strong interest and foundational knowledge in AI through certifications (Oracle Cloud Infrastructure AI Foundations, Google Advanced Data Analytics Capstone) and an AI-focused internship (AICTE IBM SkillsBuild Internship on Cloud and AI Applications). Their \"AI Fitness Trainer\" project showcases practical experience with LLM integration (Gemini AI) and voice AI assistants, as well as deployment using modern web technologies. They also list \"Google Cloud\" in their data analytics skills, which is relevant to the GCP requirement.\n\nHowever, there are significant mismatches that make this job posting largely unsuitable:\n\n1.  **Experience Level:** The job explicitly requires \"5 years’ experience in relevant field\". The candidate is currently a student (2027 - present) with work experience entries dating to 2025, indicating a severe lack of the required professional experience.\n2.  **Key Programming Language (Python):** Python is listed as a required skill and \"a plus\" for experience. The candidate's resume does not explicitly list Python under programming languages or skills, which is a critical gap for an AI Engineer role.\n3.  **Specific GCP Services:** While \"Google Cloud\" is mentioned, specific services like \"GCP Cloud Run\" are not explicitly listed in the candidate's skills.\n\nDue to the substantial discrepancy in required experience and the absence of a core programming skill (Python) explicitly mentioned as a requirement, the candidate is not a strong fit for this particular role, which targets an experienced AI Engineer."
+          }
+        }
+      },
+      {
+        "json": {
+          "output": {
+            "company_name": "Ericsson",
+            "job_description": "Software Developer Intern",
+            "rating": "65",
+            "justification": "The candidate presents a strong foundation in core programming languages such as Java, C, and R, which align with the job requirements. Their certifications and project experience in AI/ML (e.g., \"AI Fitness Trainer\" using Gemini AI, \"Oracle Cloud Infrastructure AI Foundations\") are highly relevant to the \"Domain knowledge in AI/ML\" and the role's focus on innovation and creating proof-of-concepts. The \"AICTE IBM SkillsBuild Internship on Cloud and AI Applications\" and skills in \"Google Cloud\" also demonstrate experience with cloud infrastructure, a key area for Ericsson.\n\nHowever, there are notable gaps in several technologies explicitly mentioned in the job posting. The candidate does not list experience with Microservices, Containerization (Docker, Kubernetes), Ansible for automation and configuration, or specific CI/CD/CT tools like Jenkins, JIRA, or JFrog. While they have strong general programming and web development skills, these specific technologies are central to the \"Managed Services Application Development and Modernization (ADM) Team\" mentioned in the job description. Given this is an intern position, some learning is expected, and the candidate's existing strengths are valuable, but the absence of these specific, core skills prevents a higher rating."
+          }
+        }
+      },
+      {
+        "json": {
+          "output": {
+            "company_name": "Mango Creative Co.",
+            "job_description": "SEO/AEO Strategist",
+            "rating": "15",
+            "justification": "The candidate is a current student with limited professional experience (expected graduation 2027 or later), which significantly mismatches the job requirement of \"8-10 years experience in organic growth marketing\" and proven SEO results. While the candidate demonstrates strong foundational web development skills (HTML/CSS) and relevant AI/ML knowledge, including practical application with Gemini AI in a project (highly relevant to AEO and the evolving search landscape), they lack explicit experience in traditional SEO, technical SEO leadership, specific SEO tools (e.g., Ahrefs, SEMrush, Screaming Frog, Google Search Console for strategic SEO), and content strategy at the required senior level. The AI skills offer a small degree of suitability for the AEO component, but the vast experience gap and lack of core SEO expertise make them largely unsuitable for this senior strategist position."
+          }
+        }
+      },
+      {
+        "json": {
+          "output": {
+            "company_name": "Fortira Inc.",
+            "job_description": "Lead AI Engineer (Agentic AI Applications)",
+            "rating": "5/100",
+            "justification": "The candidate, Sanjolee Singh, is currently a student (expected graduation 2027) and lacks the minimum 7 years of software/AI engineering experience, with at least 2 years in technical leadership/architectural roles, as required by the job posting. The role is for a Lead AI Engineer with significant responsibilities in delivery management, technical leadership, and architecting production-grade distributed AI solutions. While the candidate has an AI project involving LLM integration (Gemini AI) and strong React skills, they do not demonstrate the deep expertise in distributed systems, advanced proficiency in Python, FastAPI, Azure Cloud, Docker, Kubernetes, LangChain, RAG pipelines, or DevOps practices (CI/CD, monitoring, logging, tracing with Datadog) that are crucial for this senior position. The candidate's experience is primarily academic and at an entry-level stage, which is a significant mismatch for a lead role demanding extensive industry experience and specific technical mastery."
+          }
+        }
+      }
+    ],
+    "Resume Building Agent": [
+      {
+        "json": {
+          "output": "<h1>Sanjolee Singh</h1>\n<div class=\"job-title\"><strong>Software Developer Intern</strong></div>\n\n<div class=\"contact-section\">\n<strong>Contact:</strong>\n<ul>\n<li>Phone: +91-9777641432</li>\n<li>Email: sanjoleestj17@gmail.com</li>\n<li>LinkedIn: linkedin.com/in/sanjolee-singh-30139a300</li>\n<li>Website: mysite.com</li>\n</ul>\n</div>\n\n<h2><strong>Summary</strong></h2>\n<p class=\"summary\">Motivated Computer Science student with a strong foundation in full-stack web development, AI/ML, and cloud technologies, seeking a Software Developer Intern position. Eager to apply hands-on experience in building scalable applications, contributing to open-source projects, and leveraging problem-solving skills to develop innovative solutions. Proven ability to quickly learn and adapt to new technologies, coupled with a collaborative spirit and commitment to excellence.</p>\n\n<h2><strong>Experience</strong></h2>\n<div class=\"experience-entry\">\n<h3>Google Student Ambassador</h3>\n<p class=\"experience-meta\"><em>Kalinga Institute of Industrial Technology</em> | 2025</p>\n<ul>\n<li>Represented Google on campus, fostering technical communities and organizing events to promote Google technologies among students.</li>\n<li>Developed leadership and communication skills while engaging with a diverse student body.</li>\n</ul>\n</div>\n\n<div class=\"experience-entry\">\n<h3>GirlScript Summer of Code (GSSoC) Contributor</h3>\n<p class=\"experience-meta\">2025</p>\n<ul>\n<li>Actively contributed to open-source projects, enhancing practical coding skills and collaborating with a diverse developer community.</li>\n<li>Gained hands-on experience with version control systems and agile development practices.</li>\n</ul>\n</div>\n\n<div class=\"experience-entry\">\n<h3>AICTE IBM SkillsBuild Internship on Cloud and AI Applications</h3>\n<p class=\"experience-meta\">2025</p>\n<ul>\n<li>Completed an intensive internship focused on Cloud and AI applications, gaining practical experience in deploying and managing cloud-based solutions and leveraging AI tools.</li>\n<li>Acquired foundational knowledge in cloud computing principles and artificial intelligence frameworks.</li>\n</ul>\n</div>\n\n<h2><strong>Education</strong></h2>\n<div class=\"education-entry\">\n<h3>Computer Science</h3>\n<p class=\"education-meta\"><strong>Kalinga Institute of Industrial Technology, Bhubaneswar</strong> | 2027 - present</p>\n</div>\n<div class=\"education-entry\">\n<h3>KiiT International School, Bhubaneswar (CBSE)</h3>\n<p class=\"education-meta\">2022</p>\n</div>\n\n<h2><strong>Skills</strong></h2>\n<div class=\"skills-section\">\n<ul>\n<li><strong>Programming Languages:</strong> C, Java, R, Object-Oriented Programming (OOPS), Data Structures & Algorithms (DSA)</li>\n<li><strong>Web Development (Full-stack):</strong> HTML5, CSS, Bootstrap, JavaScript, Node.js, Express.js, EJS, React.js, Redux, Redux Toolkit, Tailwind CSS, REST APIs, Git & GitHub</li>\n<li><strong>Databases:</strong> SQL, MongoDB</li>\n<li><strong>Cloud & AI:</strong> Google Cloud, Oracle Cloud Infrastructure (OCI), Machine Learning Basics, Gemini AI, Vapi AI</li>\n<li><strong>Tools & Platforms:</strong> Terminal, Git, GitHub, Clerk (Auth), Convex (Database), Tableau, Google Analytics</li>\n<li><strong>Data Analytics:</strong> Spreadsheets (Excel), Data Cleaning, Data Visualization, Statistics, Data Mining, Predictive Analytics, Data Storytelling</li>\n</ul>\n</div>\n\n<h2><strong>Projects</strong></h2>\n<div class=\"project-entry\">\n<h3>AI Fitness Trainer with Personalized Diet and Workout Plans</h3>\n<p class=\"project-meta\">GitHub</p>\n<ul>\n<li>Engineered and deployed a full-stack AI Fitness Trainer, delivering personalized diet and workout plans based on user input.</li>\n<li>Integrated advanced AI capabilities using a voice AI assistant (Vapi) and large language models (Gemini AI) for dynamic program generation.</li>\n<li>Developed a robust user authentication system with Clerk and managed data efficiently using Convex database.</li>\n<li>Utilized modern web technologies including Next.js, React, Tailwind CSS, and Shadcn UI to build a responsive and intuitive user interface.</li>\n<li>Demonstrates proficiency in full-stack development, AI integration, and database management.</li>\n</ul>\n</div>\n\n<h2><strong>Publications</strong></h2>\n<div class=\"publication-entry\">\n<p>Sansanwal, Gargi and Singh, Sanjolee (2025). Critical Representation of Smart and Distributed Modeling for Disease Risk Analysis. In: Wearable Technologies for Digital Medicine: Advancement, Models, and Applications. Eds. Sushruta Mishra, Subhashish Das, and S. Balamurugan. Scrivener Publishing LLC, pp. 319–340. ICCCN.</p>\n</div>\n\n<h2><strong>Awards & Certifications</strong></h2>\n<div class=\"certifications-section\">\n<ul>\n<li>Certificate of Completion – “Java 17 Masterclass: Start Coding in 2024 Udemy”</li>\n<li>Certificate of Completion – “Google Advanced Data Analytics Capstone, Coursera”</li>\n<li>Certificate of Completion – “Oracle Cloud Infrastructure AI Foundations, Oracle MyLearn”</li>\n<li>Certificate of Completion – “Apna College Web Development Course, ApnaCollege”</li>\n</ul>\n</div>"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Job Matching Agent": {
+      "main": [
+        [
+          {
+            "node": "65% or Higher Qualification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8AM Daily": {
+      "main": [
+        [
+          {
+            "node": "Get Original Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Original Resume": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn Jobs Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn Jobs Scraper": {
+      "main": [
+        [
+          {
+            "node": "Limit 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Think": {
+      "ai_tool": [
+        [
+          {
+            "node": "Job Matching Agent",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Resume Building Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Job Matching Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "65% or Higher Qualification": {
+      "main": [
+        [
+          {
+            "node": "Limit 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit 1": {
+      "main": [
+        [
+          {
+            "node": "Resume Building Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resume Building Agent": {
+      "main": [
+        [
+          {
+            "node": "HTML Formatter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Updated Resume": {
+      "main": [
+        [
+          {
+            "node": "Telegram Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML Formatter": {
+      "main": [
+        [
+          {
+            "node": "Create a document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit 4": {
+      "main": [
+        [
+          {
+            "node": "Job Matching Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Job Matching Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Resume Building Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a document": {
+      "main": [
+        [
+          {
+            "node": "Upload Updated Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6776c1e2-4b81-4a3f-bc8c-3c51fe2e4222",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8223f689cbce9bf38bcdd3e95c7cd15b7568eb8e48dc0077f88090168b4ac3e8"
+  },
+  "id": "q9QnjkGnGEJSgQZx",
+  "tags": []
+}
